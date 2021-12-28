@@ -103,7 +103,7 @@ async function getNFTTokens(owner) {
                     if (tokenAmount.uiAmount === 1) {
                         // mint should be the NFT token
                         try {
-                            const metadata = await getMetadata(connection, mint);
+                            const metadata = await getMetadata(mint);
                             const {
                                 data,
                                 data: {uri}
@@ -131,7 +131,8 @@ async function getNFTTokens(owner) {
  * @param mint : string
  * @returns {Promise<void>}
  */
-async function getMetadata(connection, mint) {
+async function getMetadata( mint) {
+    const connection = new Connection(process.env.SOl_RPC_URL, 'confirmed');
     return new Promise((async (resolve, reject) => {
         try {
         const addresses = await PublicKey.findProgramAddress([
@@ -150,7 +151,7 @@ async function getMetadata(connection, mint) {
                 Metadata,
                 binaryData
             );
-            console.log('metadata----', mint, metadata)
+            // console.log('metadata----', mint, metadata)
 
             metadata.data.name = metadata.data.name.replace(/\0/g, "");
             metadata.data.symbol = metadata.data.symbol.replace(/\0/g, "");
@@ -159,7 +160,7 @@ async function getMetadata(connection, mint) {
             resolve(metadata);
         }
         } catch (e) {
-            console.log('e', e)
+            // console.log('e', e)
             reject(e)
         }
     }))
@@ -175,6 +176,7 @@ const getNFTsByCollection = async (address) => {
             for (let i = 0; i < signatures.length; i++) {
                 await sleep(200);
                 const data = await connection.getConfirmedTransaction(signatures[i].signature)
+                console.log('------data', JSON.stringify(data));
                 if (data?.meta?.preTokenBalances) {
                     // eslint-disable-next-line array-callback-return
                     data.meta.preTokenBalances.map(mint => {
@@ -186,7 +188,7 @@ const getNFTsByCollection = async (address) => {
             const owners = [];
             for (let i = 0; i < mints.length; i++) {
                 await sleep(200);
-                const metadata = await getMetadata(connection, mints[i].mint);
+                const metadata = await getMetadata(mints[i].mint);
                 if (metadata.data.uri) {
                     // const data = await getMetaInfo(metadata.data.uri)
                     sqlData.push([
@@ -214,13 +216,63 @@ const sleep = ms => {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+const getMintTimestamp = (mint)  => {
+    return new Promise((async resolve => {
+        const connection = new Connection(process.env.SOl_RPC_URL, 'confirmed');
+        const signatures = await connection.getSignaturesForAddress(new PublicKey(mint));
+        resolve({mintTimestamp: signatures[signatures.length - 1].blockTime, updatedAt: signatures[0].blockTime})
+    }))
+}
+
+const getSale = (mint) => {
+    return new Promise((async resolve => {
+        // console.log('mint-----', mint)
+        const connection = new Connection(process.env.SOl_RPC_URL, 'confirmed');
+        const signatures = await connection.getSignaturesForAddress(new PublicKey(mint));
+        // console.log('signatures---', signatures);
+        const signature = signatures[signatures.length - 1]
+        // console.log('signature---', signature);
+        const result = await connection.getParsedConfirmedTransaction(signature.signature)
+        // console.log('result---', JSON.stringify(result))
+        // console.log( result.meta.innerInstructions[result.meta.innerInstructions.length - 1].instructions[0].parsed.info);
+        resolve({blockNumber: signature.slot, blockTimestamp: signature.blockTime, price: result.meta.innerInstructions[result.meta.innerInstructions.length - 1].instructions[0].parsed.info.lamports})
+    }))
+}
+
 // getMetadata(new Connection('https://api.devnet.solana.com','confirmed'), '7m9gHwaYRd5BGmDedSM7pvEAfakqYbUnuNBhNVgreVB9').then(result => {
 //     console.log(result);
 // }).catch(error => {
 //     console.log(error);
 // });
 
+const test = async (address) => {
+    const connection = new Connection(process.env.SOl_RPC_URL, 'confirmed');
+
+    const signatures = await connection.getSignaturesForAddress(new PublicKey('CfxLktqEiQ4XiNSqmW4UadNoSfUdDYfDDeqvJoQMpaU9'));
+    console.log('signatures---', signatures);
+    const signature = signatures[signatures.length - 1].signature
+    console.log('signature---', signature);
+    const result = await connection.getParsedConfirmedTransaction(signature)
+    console.log('result---', JSON.stringify(result))
+    console.log( result.meta.innerInstructions[result.meta.innerInstructions.length - 1].instructions[0].parsed.info);
+
+    // const result = await connection.getParsedConfirmedTransaction(signature)
+    // console.log('result---', JSON.stringify(result))
+    // console.log( result.meta.innerInstructions[result.meta.innerInstructions.length - 1].instructions[0].parsed.info);
+
+    // const signatures = await connection.getSignaturesForAddress(new PublicKey(address));
+    // // console.log('signature', signatures)
+    // const signature = signatures[0].signature
+    // console.log('signature', signature)
+    // const result = await connection.getParsedConfirmedTransaction(signature)
+    // console.log('result---', JSON.stringify(result))
+}
+
 module.exports = {
     getNFTsByCollection,
-    getNFTTokens
+    getNFTTokens,
+    test,
+    getMetadata,
+    getMintTimestamp,
+    getSale
 }
